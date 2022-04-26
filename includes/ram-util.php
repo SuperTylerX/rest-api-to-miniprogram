@@ -773,3 +773,16 @@ function custom_minapper_post_fields($_data, $post, $request) {
 	// $data->data = $_data;
 	return $_data;
 }
+
+
+function get_random_string($length) {
+    //字符组合
+    $str = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $len = strlen($str) - 1;
+    $randstr = '';
+    for ($i = 0; $i < $length; $i++) {
+        $num = mt_rand(0, $len);
+        $randstr .= $str[$num];
+    }
+    return $randstr;
+}
