@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
 
 class RAM_REST_Forums_Controller extends WP_REST_Controller {
 
-    public function __construct() {
+	public function __construct() {
 		$this->namespace = 'uni-app-rest-enhanced/v1';
 		$this->resource_name = 'forums';
 	}
@@ -160,7 +160,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		$all_forum_data['title'] = bbp_get_forum_title($forum_id);
 		$all_forum_data['name'] = bbp_get_forum_title($forum_id);
 		$all_forum_data['parent'] = bbp_get_forum_parent_id($forum_id);
-		$all_forum_data['total'] = bbp_get_forum_topic_count($forum_id);
+		$all_forum_data['total'] = (int)bbp_get_forum_topic_count($forum_id);
 		$content = bbp_get_forum_content($forum_id);
 		$all_forum_data['content'] = $content;
 		$all_forum_data['page'] = $page;
@@ -182,18 +182,18 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			'order' => 'DESC',
 			'posts_per_page' => $per_page,
 			'paged' => $page,
-			'post_parent' => $forum_id))) {
-			$all_forum_data['current_page'] = $page;
-			$all_forum_data['per_page'] = $per_page;
+			'post_parent' => $forum_id))
+		) {
 			$all_forum_data['total_topics'] = (int)$bbp->topic_query->found_posts;
 			$all_forum_data['total_pages'] = ceil($all_forum_data['total_topics'] / $per_page);
 
-			$i = 0;
 			while (bbp_topics()) : bbp_the_topic();
 				$topic_id = bbp_get_topic_id();
-				$all_forum_data['topics'][$i] = $this->get_topic_detail($topic_id);
-				$i++;
+				if (!bbp_is_topic_super_sticky($topic_id) && !bbp_is_topic_sticky($topic_id)) {
+					$all_forum_data['topics'][] = $this->get_topic_detail($topic_id);
+				}
 			endwhile;
+
 		} else {
 			$all_forum_data['topics'] = array();
 		}
@@ -210,7 +210,6 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		$one_sticky['title'] = html_entity_decode(bbp_get_topic_title($topic_id));
 		$one_sticky['reply_count'] = bbp_get_topic_reply_count($topic_id);
 		$one_sticky['permalink'] = bbp_get_topic_permalink($topic_id);
-		$one_sticky['author_name'] = bbp_get_topic_author_display_name($topic_id);
 		$author_id = bbp_get_topic_author_id($topic_id);
 		$one_sticky['author_id'] = $author_id;
 		$one_sticky['author_name'] = bbp_get_topic_author_display_name($topic_id);;

@@ -31,21 +31,20 @@ class RAM_REST_Options_Controller extends WP_REST_Controller {
 	public function get_general_setting($request) {
 
 		$expand = get_option('minapper_expand_settings_page');
-		$downloadfileDomain = get_option('wf_downloadfile_domain');
-		$businessDomain = get_option('wf_business_domain');
-		$result["downloadfileDomain"] = $downloadfileDomain;
-		$result["businessDomain"] = $businessDomain;
+		$result["downloadfileDomain"] = get_option('wf_downloadfile_domain');
+		$result["businessDomain"] = get_option('wf_business_domain');
 
-		$result['postImageUrl'] = get_option("wf_poster_imageurl");
+		$result['posterImageUrl'] = get_option("wf_poster_imageurl") === false ? "" : get_option("wf_poster_imageurl");
 		$result["zanImageUrl"] = get_option('wf_zan_imageurl');
 		$result["logoImageUrl"] = get_option('wf_logo_imageurl');
 		$result["shareImageUrl"] = get_option('wf_share_imageurl');
 
-		$swipe_nav = $expand['swipe_nav'];
-		$selected_nav = $expand['selected_nav'];
-		$_expand['swipe_nav'] = $swipe_nav;
-		$_expand['selected_nav'] = $selected_nav;
-		$result["expand"] = $_expand;
+		if (!empty($expand)) {
+			$result["expand"] = ['swipe_nav' => $expand['swipe_nav'], 'selected_nav' => $expand['selected_nav']];
+		} else {
+			$result["expand"] = ['swipe_nav' => [], 'selected_nav' => []];
+		}
+
 
 		$result["wf_enable_comment_option"] = empty(get_option('wf_enable_comment_option')) ? "0" : get_option('wf_enable_comment_option');
 		$result["wf_enable_qq_comment_option"] = empty(get_option('wf_enable_qq_comment_option')) ? "0" : get_option('wf_enable_qq_comment_option');
@@ -60,10 +59,9 @@ class RAM_REST_Options_Controller extends WP_REST_Controller {
 		$result["enable_hot_interstitial_ad"] = empty(get_option('enable_hot_interstitial_ad')) ? "0" : get_option('enable_hot_interstitial_ad');
 		$result["enable_comments_interstitial_ad"] = empty(get_option('enable_comments_interstitial_ad')) ? "0" : get_option('enable_comments_interstitial_ad');
 		$result["enable_live_interstitial_ad"] = empty(get_option('enable_live_interstitial_ad')) ? "0" : get_option('enable_comments_interstitial_ad');
+		$result["is_user_registration_enable"] = get_option('users_can_register') === "1";
 
-		$response = rest_ensure_response($result);
-		return $response;
-
+		return rest_ensure_response($result);
 	}
 
 
