@@ -204,7 +204,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		return $all_forum_data;
 	}
 
-	function get_topic_detail($topic_id) {
+	function get_topic_detail($topic_id, $is_show_content = false) {
 		$one_sticky = array();
 		$one_sticky['id'] = $topic_id;
 		$one_sticky['title'] = html_entity_decode(bbp_get_topic_title($topic_id));
@@ -217,8 +217,10 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		$one_sticky['pageviews'] = (int)get_post_meta($topic_id, 'views', true);
 		$one_sticky['post_date'] = bbp_get_topic_post_date($topic_id);
 		$one_sticky['excerpt'] = mb_strimwidth(wp_filter_nohtml_kses(bbp_get_topic_content($topic_id)), 0, 150, '...');
-		$one_sticky['allimg'] = get_post_content_images(bbp_get_topic_content($topic_id));
-		$one_sticky['content_nohtml'] = wp_filter_nohtml_kses(bbp_get_topic_content($topic_id));
+		$one_sticky['all_img'] = get_post_content_images(bbp_get_topic_content($topic_id));
+		if ($is_show_content === true) {
+			$one_sticky['content_nohtml'] = wp_filter_nohtml_kses(bbp_get_topic_content($topic_id));
+		}
 		$one_sticky['like_count'] = count(bbp_get_topic_favoriters($topic_id));
 		return $one_sticky;
 	}
@@ -233,15 +235,16 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		if (!bbp_is_topic($topic_id)) {
 			return new WP_Error('error', 'Parameter value ' . $topic_id . ' is not an ID of a topic', array('status' => 404));
 		} else {
-			$all_topic_data['id'] = $topic_id;
+			$all_topic_data['id'] = (int)$topic_id;
 			$all_topic_data['title'] = html_entity_decode(bbp_get_topic_title($topic_id));
-			$all_topic_data['reply_count'] = bbp_get_topic_reply_count($topic_id);
+			$all_topic_data['reply_count'] = (int)bbp_get_topic_reply_count($topic_id);
 			$all_topic_data['permalink'] = bbp_get_topic_permalink($topic_id);
 			$tags = wp_get_object_terms($topic_id, "topic-tag");
 			$i = 0;
+			$all_topic_data['tags'] = [];
 			foreach ($tags as $tag) {
-				$all_topic_data['tags'][$i]['tag_ids'] = $tag->term_id;
-				$all_topic_data['tags'][$i]['tag_names'] = $tag->name;
+				$all_topic_data['tags'][$i]['id'] = $tag->term_id;
+				$all_topic_data['tags'][$i]['name'] = $tag->name;
 				$i++;
 			}
 			$all_topic_data['author_name'] = bbp_get_topic_author_display_name($topic_id);
@@ -253,7 +256,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$all_topic_data['is_super_sticky'] = bbp_is_topic_super_sticky($topic_id);
 
 			$raw_enable_comment_option = get_option('raw_enable_comment_option');
-			$all_topic_data['enableComment'] = empty($raw_enable_comment_option) ? "0" : "1";
+			$all_topic_data['is_comment_enabled'] = empty($raw_enable_comment_option);
 
 			$pageviews = (int)get_post_meta($topic_id, 'views', true);
 			$all_topic_data['views'] = $pageviews;
@@ -262,8 +265,8 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			if (!update_post_meta($topic_id, 'views', $post_views)) {
 				add_post_meta($topic_id, 'views', 1, true);
 			}
-			$all_topic_data['allimg'] = get_post_content_images(bbp_get_topic_content($topic_id));
-			$all_topic_data['content_nohtml'] = wp_filter_nohtml_kses(bbp_get_topic_content($topic_id));
+			$all_topic_data['content'] = bbp_get_topic_content($topic_id);
+			$all_topic_data['like_count'] = count(bbp_get_topic_favoriters($topic_id));
 
 			return $all_topic_data;
 		}
