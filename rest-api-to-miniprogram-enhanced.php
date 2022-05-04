@@ -39,7 +39,7 @@ if (!class_exists('RestAPIMiniProgram')) {
 
 		public function __construct() {
 			//定制化内容输出，对pc端和api都生效
-			add_filter('the_content', 'custocm_content_filter');
+			add_filter('the_content', 'custom_content_filter');
 			//对文章的自定义输出
 			add_filter('rest_prepare_post', 'custom_post_fields', 10, 3);
 			//对页面的自定义输出
@@ -71,6 +71,8 @@ if (!class_exists('RestAPIMiniProgram')) {
 			add_filter('manage_edit-category_columns', 'ram_custom_taxonomy_columns');
 			add_filter('manage_category_custom_column', 'ram_custom_taxonomy_columns_content', 10, 3);
 
+			// 添加激活插件时钩子
+			register_activation_hook(__FILE__, "activate");
 
 			// 管理配置
 			if (is_admin()) {
@@ -115,5 +117,13 @@ if (!class_exists('RestAPIMiniProgram')) {
 		array_unshift($links, $settings_link);
 
 		return $links;
+	}
+
+	function activate() {
+		// 给订阅者添加上传文件权限，用于圈子图片上传
+		$role = 'subscriber';
+		$role = get_role($role);
+		$role->add_cap('upload_files');
+		$role->add_cap('delete_posts');
 	}
 }

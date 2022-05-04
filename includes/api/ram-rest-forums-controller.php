@@ -107,6 +107,23 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			'schema' => array($this, 'get_public_item_schema')
 		));
 
+		// 给文章点赞
+		register_rest_route($this->namespace, '/' . $this->resource_name . '/like', array(
+			array(
+				'methods' => 'POST',
+				'callback' => array($this, 'bbp_topic_like'),
+				'permission_callback' => array($this, 'bbp_topic_like_permissions_check'),
+				'args' => array(
+					'id' => array(
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param);
+						}
+					)
+				)
+			),
+			// Register our schema callback.
+			'schema' => array($this, 'get_public_item_schema')
+		));
 
 	}
 
@@ -222,6 +239,14 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$one_sticky['content_nohtml'] = wp_filter_nohtml_kses(bbp_get_topic_content($topic_id));
 		}
 		$one_sticky['like_count'] = count(bbp_get_topic_favoriters($topic_id));
+
+		$current_user = wp_get_current_user();
+		$user_id = $current_user->ID;
+		if ($user_id != 0) {
+			$one_sticky['is_user_favorite'] = bbp_is_user_favorite($user_id, $topic_id);
+		} else {
+			$one_sticky['is_user_favorite'] = false;
+		}
 		return $one_sticky;
 	}
 
@@ -254,6 +279,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$all_topic_data['post_date'] = bbp_get_topic_post_date($topic_id);
 			$all_topic_data['is_sticky'] = bbp_is_topic_sticky($topic_id);
 			$all_topic_data['is_super_sticky'] = bbp_is_topic_super_sticky($topic_id);
+			$all_topic_data['status'] = bbp_get_topic_status($topic_id);
 
 			$raw_enable_comment_option = get_option('raw_enable_comment_option');
 			$all_topic_data['is_comment_enabled'] = empty($raw_enable_comment_option);
@@ -268,6 +294,13 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$all_topic_data['content'] = bbp_get_topic_content($topic_id);
 			$all_topic_data['like_count'] = count(bbp_get_topic_favoriters($topic_id));
 
+			$current_user = wp_get_current_user();
+			$user_id = $current_user->ID;
+			if ($user_id != 0) {
+				$all_topic_data['is_user_favorite'] = bbp_is_user_favorite($user_id, $topic_id);
+			} else {
+				$all_topic_data['is_user_favorite'] = false;
+			}
 			return $all_topic_data;
 		}
 	}
@@ -275,38 +308,55 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 	// 获取指定文章评论
 	public function bbp_api_replies_one($data) {
 		$topic_id = bbp_get_topic_id($data['id']);
-		$bbp = bbpress();
 		$per_page = !isset($_GET['per_page']) ? 10 : (int)$_GET['per_page'];
-		if ($per_page > 100) $per_page = 100;
 		$page = !isset($_GET['page']) ? 1 : (int)$_GET['page'];
+		$page = ($page - 1) * $per_page;
 
-		$all_topic_data['current_page'] = $page;
-		$all_topic_data['per_page'] = $per_page;
+		global $wpdb;
+		$sql = "SELECT " . $wpdb->posts . ".* from " . $wpdb->posts . ", " . $wpdb->postmeta . " WHERE ID = post_id AND post_status = 'publish' AND post_type = 'reply' AND meta_key = '_bbp_topic_id' AND meta_value = " . $topic_id . " AND ID NOT IN (select post_id from " . $wpdb->postmeta . " where meta_key = '_bbp_reply_to') ORDER BY post_date DESC LIMIT " . $page . "," . $per_page;
 
-		if (bbp_has_replies(array('orderby' => 'date', 'order' => 'DESC', 'posts_per_page' => $per_page, 'paged' => $page, 'post_parent' => $topic_id))) {
-			$all_topic_data['total_replies'] = (int)$bbp->reply_query->found_posts - 1; // Remove the topic that comes as first reply
-			$all_topic_data['total_pages'] = ceil($all_topic_data['total_replies'] / $per_page);
+		$comments = $wpdb->get_results($sql);
+		$comments_list = array();
 
-			$i = 0;
-			while (bbp_replies()) : bbp_the_reply();
-				$reply_id = bbp_get_reply_id();
-				if ($reply_id != $topic_id) {
-					// The first reply is the topic itself, so this 'if' removes it
-					$all_topic_data['replies'][$i]['id'] = $reply_id;
-					$all_topic_data['replies'][$i]['author_name'] = bbp_get_reply_author_display_name($reply_id);
-					$all_topic_data['replies'][$i]['author_id'] = bbp_get_reply_author_id($reply_id);
-					$all_topic_data['replies'][$i]['author_avatar'] = get_avatar_url_2(bbp_get_reply_author_email($reply_id));
-					$all_topic_data['replies'][$i]['post_date'] = bbp_get_reply_post_date($reply_id);
-					$all_topic_data['replies'][$i]['reply_to'] = bbp_get_reply_to($reply_id);
-					$all_topic_data['replies'][$i]['content'] = bbp_get_reply_content($reply_id);
-					$i++;
-				}
-			endwhile;
-		} else {
-			// No replies
-			$all_topic_data['replies'] = array();
+		foreach ($comments as $comment) {
+			$post_author_id = $comment->post_author;
+			$reply_id = (int)$comment->ID;
+			$res["userid"] = (int)$post_author_id;
+			$res["id"] = $reply_id;
+			$res["author_name"] = bbp_get_user_nicename($post_author_id);
+			$res["author_avatar"] = get_avatar_url_2($post_author_id);
+			$res["post_date"] = time_tran($comment->post_date);
+			$res["content"] = $comment->post_content;
+			$order = "asc";
+			$res["child"] = $this->get_child_comment($topic_id, $reply_id);
+			$comments_list[] = $res;
+
 		}
-		return $all_topic_data;
+		return $comments_list;
+	}
+
+	private function get_child_comment($topic_id, $reply_id) {
+		global $wpdb;
+		$sql = "SELECT " . $wpdb->posts . ".* from " . $wpdb->posts . ", " . $wpdb->postmeta . " WHERE ID = post_id AND post_status = 'publish' AND post_type = 'reply' AND meta_key = '_bbp_topic_id' AND meta_value = " . $topic_id . " AND ID IN (select post_id from  " . $wpdb->postmeta . " where meta_key = '_bbp_reply_to' AND meta_value = " . $reply_id . ") ORDER BY post_date DESC";
+
+		$comments = $wpdb->get_results($sql);
+
+		$comments_list = array();
+		foreach ($comments as $comment) {
+			$post_author_id = $comment->post_author;
+			$reply_id = (int)$comment->ID;
+			$res["userid"] = (int)$post_author_id;
+			$res["id"] = $reply_id;
+			$res["author_name"] = bbp_get_user_nicename($post_author_id);
+			$res["author_avatar"] = get_avatar_url_2($post_author_id);
+			$res["post_date"] = time_tran($comment->post_date);
+			$res["content"] = $comment->post_content;
+			$order = "asc";
+			$res["child"] = $this->get_child_comment($topic_id, $reply_id);
+			$comments_list[] = $res;
+
+		}
+		return $comments_list;
 	}
 
 	function bbp_api_new_topic_post($data) {
@@ -377,6 +427,39 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		return $response;
 	}
 
+	// 给文章点赞
+	function bbp_topic_like($request) {
+		$post_id = $request["id"];
+		$is_like = !empty($request["like"]);
+
+		$current_user = wp_get_current_user();
+		$user_id = $current_user->ID;
+		if ($user_id == 0) {
+			return new WP_Error('error', '尚未登录或Token无效', array('status' => 400));
+		}
+
+		if ($is_like) {
+			if (bbp_add_user_favorite($user_id, $post_id)) {
+				$res["code"] = "200";
+				$res["message"] = "点赞成功";
+			} else {
+				$res["code"] = "400";
+				$res["message"] = "点赞失败";
+			}
+		} else {
+			if (bbp_remove_user_favorite($user_id, $post_id)) {
+				$res["code"] = "200";
+				$res["message"] = "取消点赞成功";
+			} else {
+				$res["code"] = "400";
+				$res["message"] = "取消点赞失败";
+			}
+		}
+
+
+		return rest_ensure_response($res);
+	}
+
 	function bbp_api_new_topic_post_permissions_check($request) {
 
 		$current_user = wp_get_current_user();
@@ -406,6 +489,15 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			return new WP_Error('error', '内容文字太多，超过5000字', array('status' => 400));
 		}
 
+		return true;
+	}
+
+	function bbp_topic_like_permissions_check($request) {
+		$current_user = wp_get_current_user();
+		$ID = $current_user->ID;
+		if ($ID == 0) {
+			return new WP_Error('error', '尚未登录或Token无效', array('status' => 400));
+		}
 		return true;
 	}
 
