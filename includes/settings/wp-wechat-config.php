@@ -41,6 +41,7 @@ function register_weixinappsettings() {
 	register_setting('uniapp-group', 'wf_enable_comment_option');
 	register_setting('uniapp-group', 'wf_enable_comment_check');
 	register_setting('uniapp-group', 'wf_enable_qq_comment_option');
+	register_setting('uniapp-group', 'uni_enable_h5_comment_option');
 
 
 	register_setting('uniapp-group', 'wf_praise_word');
@@ -77,6 +78,9 @@ function register_weixinappsettings() {
 	register_setting('uniapp-group', 'uni_app_updated_version_code');
 	register_setting('uniapp-group', 'uni_app_updated_content');
 	register_setting('uniapp-group', 'uni_app_updated_download_link');
+
+	// 论坛设置
+	register_setting('uniapp-group', 'uni_enable_forum_censorship');
 }
 
 function weixinapp_settings_page() {
@@ -457,6 +461,38 @@ function weixinapp_settings_page() {
                                 <textarea name="uni_app_updated_download_link" cols="60"
                                           rows="10"
                                           id="uni_app_updated_download_link"><?php echo esc_attr(get_option('uni_app_updated_download_link')); ?></textarea>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <h2>H5设置</h2>
+                <div class="section">
+                    <table class="form-table">
+                        <tr valign="top">
+                            <th scope="row">开启H5的评论和发帖</th>
+                            <td>
+								<?php
+								$uni_enable_h5_comment_option = get_option('uni_enable_h5_comment_option');
+								$checkbox = empty($uni_enable_h5_comment_option) ? '' : 'checked';
+								echo '<input name="uni_enable_h5_comment_option" type="checkbox"  value="true" ' . $checkbox . ' />';
+								?>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <h2>论坛设置</h2>
+                <div class="section">
+                    <table class="form-table">
+                        <tr valign="top">
+                            <th scope="row">开启论坛评论和发帖审核</th>
+                            <td>
+								<?php
+								$uni_enable_forum_censorship = get_option('uni_enable_forum_censorship');
+								$checkbox = empty($uni_enable_forum_censorship) ? '' : 'checked';
+								echo '<input name="uni_enable_forum_censorship" type="checkbox"  value="true" ' . $checkbox . ' />';
+								?>
                             </td>
                         </tr>
                     </table>

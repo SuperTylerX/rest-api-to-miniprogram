@@ -48,6 +48,7 @@ class RAM_REST_Options_Controller extends WP_REST_Controller {
 
 		$result["wf_enable_comment_option"] = empty(get_option('wf_enable_comment_option')) ? "0" : get_option('wf_enable_comment_option');
 		$result["wf_enable_qq_comment_option"] = empty(get_option('wf_enable_qq_comment_option')) ? "0" : get_option('wf_enable_qq_comment_option');
+		$result["uni_enable_h5_comment_option"] = !empty(get_option('uni_enable_h5_comment_option'));
 		$result["wf_weixin_enterprise_minapp"] = empty(get_option('wf_weixin_enterprise_minapp')) ? "0" : get_option('wf_weixin_enterprise_minapp');
 		$result["wf_qq_enterprise_minapp"] = empty(get_option('wf_qq_enterprise_minapp')) ? "0" : get_option('wf_qq_enterprise_minapp');
 
