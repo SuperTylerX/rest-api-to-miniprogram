@@ -147,7 +147,11 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 						'validate_callback' => function ($param, $request, $key) {
 							return is_numeric($param);
 						}
-					)
+					),
+					'isLike' => array(
+						'required' => true,
+						'type' => 'boolean'
+					),
 				)
 			),
 			// Register our schema callback.
@@ -494,7 +498,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 	// 给文章点赞
 	public function bbp_topic_like($request) {
 		$post_id = $request["id"];
-		$is_like = !empty($request["like"]);
+		$is_like = !empty($request["isLike"]);
 
 		$current_user = wp_get_current_user();
 		$user_id = $current_user->ID;
