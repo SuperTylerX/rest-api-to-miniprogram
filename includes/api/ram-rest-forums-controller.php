@@ -37,8 +37,22 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 				'args' => array(
 					'id' => array(
 						'validate_callback' => function ($param, $request, $key) {
-							return is_numeric($param);
+							return is_numeric($param) && bbp_is_forum($param);
 						}
+					),
+					'page' => array(
+						'required' => false,
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param) && $param > 0;
+						},
+						'default' => 1
+					),
+					'per_page' => array(
+						'required' => false,
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param) && $param > 0 && $param < 100;
+						},
+						'default' => 10
 					)
 				)
 			),
@@ -53,8 +67,8 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 				'callback' => array($this, 'bbp_api_topics_one'),
 				'args' => array(
 					'id' => array(
-						'validate_callback' => function ($param, $request, $key) {
-							return is_numeric($param);
+						'validate_callback' => function ($topic_id, $request, $key) {
+							return is_numeric($topic_id) && bbp_is_topic($topic_id);
 						}
 					)
 				)
@@ -70,9 +84,31 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 				'callback' => array($this, 'bbp_api_replies_one'),
 				'args' => array(
 					'id' => array(
+						'required' => true,
 						'validate_callback' => function ($param, $request, $key) {
-							return is_numeric($param);
+							return is_numeric($param) && bbp_is_topic($param);
 						}
+					),
+					'order' => array(
+						'required' => false,
+						'validate_callback' => function ($param, $request, $key) {
+							return in_array($param, array('asc', 'desc'));
+						},
+						'default' => 'asc'
+					),
+					'page' => array(
+						'required' => false,
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param) && $param > 0 && $param < 100;
+						},
+						'default' => 1
+					),
+					'per_page' => array(
+						'required' => false,
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param) && $param > 0 && $param < 100;
+						},
+						'default' => 10
 					)
 				)
 			),
@@ -85,23 +121,27 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			array(
 				'methods' => 'POST',
 				'callback' => array($this, 'bbp_api_new_reply'),
-				'permission_callback' => array($this, 'bbp_api_new_reply_permissions_check'),
+				'permission_callback' => array($this, 'jwt_permissions_check'),
 				'args' => array(
 					'content' => array(
 						'required' => true,
-						'type' => 'string'
+						'type' => 'string',
+						'validate_callback' => function ($param, $request, $key) {
+							return !empty($param) && strlen($param) < 5000;
+						}
 					),
 					'topic_id' => array(
 						'required' => true,
 						'validate_callback' => function ($param, $request, $key) {
-							return is_numeric($param);
+							return is_numeric($param) && bbp_is_topic($param);
 						}
 					),
 					'reply_to_id' => array(
 						'required' => true,
 						'validate_callback' => function ($param, $request, $key) {
-							return is_numeric($param);
-						}
+							return is_numeric($param) && ($param === 0 || bbp_is_reply($param));
+						},
+						'default' => 0
 					),
 				)
 			),
@@ -110,25 +150,55 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		));
 
 		// 注册发布帖子到指定论坛API
-		register_rest_route($this->namespace, '/' . $this->resource_name . '/(?P<id>\d+)', array(
+		register_rest_route($this->namespace, '/' . $this->resource_name . '/topic', array(
 			array(
 				'methods' => 'POST',
 				'callback' => array($this, 'bbp_api_new_topic_post'),
-				'permission_callback' => array($this, 'bbp_api_new_topic_post_permissions_check'),
+				'permission_callback' => array($this, 'jwt_permissions_check'),
 				'args' => array(
 					'content' => array(
 						'required' => true,
-						'description' => 'Content for the initial post in the new topic.',
-						'type' => 'string'
-					),
-					'id' => array(
+						'type' => 'string',
 						'validate_callback' => function ($param, $request, $key) {
-							return is_numeric($param);
+							return !empty($param) && strlen($param) < 10000;
+						}
+					),
+					'forum_id' => array(
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param) && bbp_is_forum($param);
 						}
 					),
 					'tags' => array(
 						'required' => false,
-						'type' => 'string'
+						'type' => 'array',
+						'default' => array(),
+						'validate_callback' => function ($tags, $request, $key) {
+							foreach ($tags as $tag) {
+								if (!empty($tag)) {
+									if (strlen($tag) > 20) {
+										// 标签字数大于20了
+										return false;
+									}
+								}
+							}
+							return true;
+						}
+					),
+					'images' => array(
+						'required' => false,
+						'type' => 'array',
+						'default' => array(),
+						'validate_callback' => function ($images, $request, $key) {
+							foreach ($images as $image) {
+								if (!empty($image)) {
+									// 判断$image是否是图片url
+									if (!preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $image)) {
+										return false;
+									}
+								}
+							}
+							return true;
+						}
 					),
 				)
 			),
@@ -141,16 +211,17 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			array(
 				'methods' => 'POST',
 				'callback' => array($this, 'bbp_topic_like'),
-				'permission_callback' => array($this, 'bbp_topic_like_permissions_check'),
+				'permission_callback' => array($this, 'jwt_permissions_check'),
 				'args' => array(
 					'id' => array(
 						'validate_callback' => function ($param, $request, $key) {
-							return is_numeric($param);
+							return is_numeric($param) && bbp_is_topic($param);
 						}
 					),
 					'isLike' => array(
 						'required' => true,
-						'type' => 'boolean'
+						'type' => 'boolean',
+						'default' => true,
 					),
 				)
 			),
@@ -189,18 +260,13 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 	}
 
 	// 获取指定论坛文章列表方法
-	public function bbp_api_forums_one($data) {
+	public function bbp_api_forums_one($request) {
 		$all_forum_data = array();
 		$bbp = bbpress();
-		$forum_id = bbp_get_forum_id($data['id']);
+		$forum_id = bbp_get_forum_id($request['id']);
 
-		if (!bbp_is_forum($forum_id)) {
-			return new WP_Error('error', 'Parameter value ' . $data['id'] . ' is not an ID of a forum', array('status' => 404));
-		}
-
-		$per_page = !isset($_GET['per_page']) ? 10 : (int)$_GET['per_page'];
-		if ($per_page > 100) $per_page = 100;
-		$page = !isset($_GET['page']) ? 1 : (int)$_GET['page'];
+		$per_page = $request['per_page'];
+		$page = $request['page'];
 
 		$all_forum_data['id'] = $forum_id;
 		$all_forum_data['title'] = bbp_get_forum_title($forum_id);
@@ -276,69 +342,64 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 	}
 
 	// 获取指定文章详情
-	public function bbp_api_topics_one($data) {
+	public function bbp_api_topics_one($request) {
 		$all_topic_data = array();
-		$topic_id = $data['id'];
-		if ($topic_id == 0) {
-			return new WP_Error('error', 'Parameter value of ID for a topic should not be 0', array('status' => 404));
+		$topic_id = (int)$request['id'];
+
+		$all_topic_data['id'] = $topic_id;
+		$all_topic_data['title'] = html_entity_decode(bbp_get_topic_title($topic_id));
+		$all_topic_data['reply_count'] = (int)bbp_get_topic_reply_count($topic_id);
+		$all_topic_data['permalink'] = bbp_get_topic_permalink($topic_id);
+		$tags = wp_get_object_terms($topic_id, "topic-tag");
+		$i = 0;
+		$all_topic_data['tags'] = [];
+		foreach ($tags as $tag) {
+			$all_topic_data['tags'][$i]['id'] = $tag->term_id;
+			$all_topic_data['tags'][$i]['name'] = $tag->name;
+			$i++;
 		}
-		if (!bbp_is_topic($topic_id)) {
-			return new WP_Error('error', 'Parameter value ' . $topic_id . ' is not an ID of a topic', array('status' => 404));
+		$all_topic_data['author_name'] = bbp_get_topic_author_display_name($topic_id);
+		$author_id = bbp_get_topic_author_id($topic_id);
+		$all_topic_data['author_id'] = $author_id;
+		$all_topic_data['author_avatar'] = get_avatar_url_2($author_id);
+		$all_topic_data['post_date'] = bbp_get_topic_post_date($topic_id);
+		$all_topic_data['is_sticky'] = bbp_is_topic_sticky($topic_id);
+		$all_topic_data['is_super_sticky'] = bbp_is_topic_super_sticky($topic_id);
+		$all_topic_data['status'] = bbp_get_topic_status($topic_id);
+
+		$raw_enable_comment_option = get_option('raw_enable_comment_option');
+		$all_topic_data['is_comment_enabled'] = empty($raw_enable_comment_option);
+
+		$views = (int)get_post_meta($topic_id, 'views', true);
+		$all_topic_data['views'] = $views;
+
+		$views = $views + 1;
+		if (!update_post_meta($topic_id, 'views', $views)) {
+			add_post_meta($topic_id, 'views', 1, true);
+		}
+		$all_topic_data['content'] = bbp_get_topic_content($topic_id);
+		$all_topic_data['like_count'] = count(bbp_get_topic_favoriters($topic_id));
+
+		$current_user = wp_get_current_user();
+		$user_id = $current_user->ID;
+		if ($user_id != 0) {
+			$all_topic_data['is_user_favorite'] = bbp_is_user_favorite($user_id, $topic_id);
 		} else {
-			$all_topic_data['id'] = (int)$topic_id;
-			$all_topic_data['title'] = html_entity_decode(bbp_get_topic_title($topic_id));
-			$all_topic_data['reply_count'] = (int)bbp_get_topic_reply_count($topic_id);
-			$all_topic_data['permalink'] = bbp_get_topic_permalink($topic_id);
-			$tags = wp_get_object_terms($topic_id, "topic-tag");
-			$i = 0;
-			$all_topic_data['tags'] = [];
-			foreach ($tags as $tag) {
-				$all_topic_data['tags'][$i]['id'] = $tag->term_id;
-				$all_topic_data['tags'][$i]['name'] = $tag->name;
-				$i++;
-			}
-			$all_topic_data['author_name'] = bbp_get_topic_author_display_name($topic_id);
-			$author_id = bbp_get_topic_author_id($topic_id);
-			$all_topic_data['author_id'] = $author_id;
-			$all_topic_data['author_avatar'] = get_avatar_url_2($author_id);
-			$all_topic_data['post_date'] = bbp_get_topic_post_date($topic_id);
-			$all_topic_data['is_sticky'] = bbp_is_topic_sticky($topic_id);
-			$all_topic_data['is_super_sticky'] = bbp_is_topic_super_sticky($topic_id);
-			$all_topic_data['status'] = bbp_get_topic_status($topic_id);
-
-			$raw_enable_comment_option = get_option('raw_enable_comment_option');
-			$all_topic_data['is_comment_enabled'] = empty($raw_enable_comment_option);
-
-			$views = (int)get_post_meta($topic_id, 'views', true);
-			$all_topic_data['views'] = $views;
-
-			$views = $views + 1;
-			if (!update_post_meta($topic_id, 'views', $views)) {
-				add_post_meta($topic_id, 'views', 1, true);
-			}
-			$all_topic_data['content'] = bbp_get_topic_content($topic_id);
-			$all_topic_data['like_count'] = count(bbp_get_topic_favoriters($topic_id));
-
-			$current_user = wp_get_current_user();
-			$user_id = $current_user->ID;
-			if ($user_id != 0) {
-				$all_topic_data['is_user_favorite'] = bbp_is_user_favorite($user_id, $topic_id);
-			} else {
-				$all_topic_data['is_user_favorite'] = false;
-			}
-			return $all_topic_data;
+			$all_topic_data['is_user_favorite'] = false;
 		}
+		return $all_topic_data;
+
 	}
 
 	// 获取指定文章评论
-	public function bbp_api_replies_one($data) {
-		$topic_id = bbp_get_topic_id($data['id']);
-		$per_page = !isset($_GET['per_page']) ? 10 : (int)$_GET['per_page'];
-		$page = !isset($_GET['page']) ? 1 : (int)$_GET['page'];
+	public function bbp_api_replies_one($request) {
+		$topic_id = bbp_get_topic_id($request['id']);
+		$per_page = $request['per_page'];
+		$page = $request['page'];
 		$page = ($page - 1) * $per_page;
-
+		$order = $request["order"];
 		global $wpdb;
-		$sql = "SELECT " . $wpdb->posts . ".* from " . $wpdb->posts . ", " . $wpdb->postmeta . " WHERE ID = post_id AND post_status = 'publish' AND post_type = 'reply' AND meta_key = '_bbp_topic_id' AND meta_value = " . $topic_id . " AND ID NOT IN (select post_id from " . $wpdb->postmeta . " where meta_key = '_bbp_reply_to') ORDER BY post_date DESC LIMIT " . $page . "," . $per_page;
+		$sql = "SELECT " . $wpdb->posts . ".* from " . $wpdb->posts . ", " . $wpdb->postmeta . " WHERE ID = post_id AND post_status = 'publish' AND post_type = 'reply' AND meta_key = '_bbp_topic_id' AND meta_value = " . $topic_id . " AND ID NOT IN (select post_id from " . $wpdb->postmeta . " where meta_key = '_bbp_reply_to') ORDER BY post_date " . $order . " LIMIT " . $page . "," . $per_page;
 
 		$comments = $wpdb->get_results($sql);
 		$comments_list = array();
@@ -348,11 +409,10 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$reply_id = (int)$comment->ID;
 			$res["userid"] = (int)$post_author_id;
 			$res["id"] = $reply_id;
-			$res["author_name"] = bbp_get_user_nicename($post_author_id);
+			$res["author_name"] = get_user_meta($post_author_id, 'nickname', true);
 			$res["author_avatar"] = get_avatar_url_2($post_author_id);
 			$res["post_date"] = time_tran($comment->post_date);
 			$res["content"] = $comment->post_content;
-			$order = "asc";
 			$res["child"] = $this->get_child_comment($topic_id, $reply_id);
 			$comments_list[] = $res;
 
@@ -372,7 +432,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$reply_id = (int)$comment->ID;
 			$res["userid"] = (int)$post_author_id;
 			$res["id"] = $reply_id;
-			$res["author_name"] = bbp_get_user_nicename($post_author_id);
+			$res["author_name"] = get_user_meta($post_author_id, 'nickname', true);
 			$res["author_avatar"] = get_avatar_url_2($post_author_id);
 			$res["post_date"] = time_tran($comment->post_date);
 			$res["content"] = $comment->post_content;
@@ -385,18 +445,25 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 	}
 
 	// 发表一个新文章
-	public function bbp_api_new_topic_post($data) {
-		$forum_id = bbp_get_forum_id($data['id']);
-		$content = $data['content'];
-		$title = substr(wp_filter_nohtml_kses($data['content']), 0, 10);
+	public function bbp_api_new_topic_post($request) {
+		$forum_id = bbp_get_forum_id($request['forum_id']);
+		$content = $request['content'];
+		// 过滤xss内容
+		$content = wp_filter_post_kses($content);
+		$title = mb_substr(trim(wp_filter_nohtml_kses($content)), 0, 10);
+
+		$images = $request['images'];
+		// 将图片插入到文章
+		foreach ($images as $image) {
+			$content .= '<br/><img src="' . $image . '" alt=""/>';
+		}
+
 		$current_user = wp_get_current_user();
 		$userId = $current_user->ID;
-
-		$_tags = isset($data['tags']) ? $data['tags'] : "";
-		$tags = explode(',', $_tags);
+		$tags = isset($request['tags']) ? $request['tags'] : [];
 
 		$post_status = 'publish';
-		$uni_enable_forum_censorship = get_option('uni_enable_forum_censorship');
+		$uni_enable_forum_censorship = !empty(get_option('uni_enable_forum_censorship'));
 		if (!empty($uni_enable_forum_censorship)) {
 			$post_status = 'pending';
 		}
@@ -416,36 +483,48 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 
 		if (!empty($new_topic_id)) {
 			$term_taxonomy_ids = wp_set_object_terms($new_topic_id, $tags, 'topic-tag');
+			// 将文章和图片关联
+			foreach ($images as $image) {
+				$image_id = attachment_url_to_postid($image);
+				if (!empty($image_id)) {
+					wp_update_post(array(
+						'ID' => $image_id,
+						'post_parent' => $new_topic_id,
+					));
+				}
+			}
 
-			$message = "提交成功";
-			$messagecode = "1";
+			$message = "发布成功";
+			$code = "1";
 
+			//需要审核显示
 			if (!empty($raw_enable_topic_check)) {
-				$message = "提交成功,管理员审核通过后方可显示.";
-				$messagecode = "2";//需要审核显示
-
+				$message = "提交成功,管理员审核通过后方可显示";
+				$code = "2";
 			}
 
 			$response = array('success' => true,
-				'messagecode' => $messagecode,
+				'code' => $code,
 				'message' => $message,
-				'new_topic_id' => $new_topic_id,
-				'post_status' => $post_status
+				'data' => array(
+					'new_topic_id' => $new_topic_id,
+					'post_status' => $post_status
+				)
 			);
-			$response = rest_ensure_response($response);
-
+			return rest_ensure_response($response);
 		} else {
-			return new WP_Error('error', '发表失败', array('status' => 400));
+			return new WP_Error('error', '发布失败', array('status' => 400));
 		}
-		return $response;
 	}
 
 	// 发表一个新评论
-	public function bbp_api_new_reply($data) {
+	public function bbp_api_new_reply($request) {
 
-		$content = $data['content'];
-		$topic_id = $data["topic_id"];
-		$reply_to_id = $data["reply_to_id"];
+		$content = $request['content'];
+		// 过滤xss内容
+		$content = wp_filter_post_kses($content);
+		$topic_id = $request["topic_id"];
+		$reply_to_id = $request["reply_to_id"];
 		$forum_id = bbp_get_forum_id($topic_id);
 
 		$current_user = wp_get_current_user();
@@ -469,7 +548,6 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		));
 
 		if (!empty($new_reply_id)) {
-//			bbp_insert_reply_update_counts($new_reply_id, $topic_id, $forum_id);
 			$message = "发表成功";
 			$code = "1";
 
@@ -528,92 +606,12 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		return rest_ensure_response($res);
 	}
 
-	function bbp_api_new_topic_post_permissions_check($request) {
-
+	function jwt_permissions_check() {
 		$current_user = wp_get_current_user();
 		$ID = $current_user->ID;
 		if ($ID == 0) {
 			return new WP_Error('error', '尚未登录或Token无效', array('status' => 400));
 		}
-
-		$tags = isset($request['tags']) ? $request['tags'] : "";
-
-		if (!empty($tags)) {
-			if (strlen($tags) > 50) {
-				return new WP_Error('error', '标签字数太多了', array('status' => 400));
-			}
-			$tempTags = explode(',', $tags);
-			if (!is_array($tempTags)) {
-				return new WP_Error('error', '标签格式不正确', array('status' => 400));
-			}
-		}
-
-		$content = $request['content'];
-		if (empty($content)) {
-			return new WP_Error('error', '内容为空', array('status' => 400));
-		}
-
-		if (strlen($content) > 5000) {
-			return new WP_Error('error', '内容文字太多，超过5000字', array('status' => 400));
-		}
-
-		//required fields in POST data
-		$forum_id = bbp_get_forum_id($request['id']);
-		if ($forum_id == 0) {
-			return new WP_Error('error', 'Parameter value of ID for a forum should not be 0', array('status' => 404));
-		}
-		if (!bbp_is_forum($forum_id)) {
-			return new WP_Error('error', 'Parameter value ' . $request['id'] . ' is not an ID of a forum', array('status' => 404));
-		}
-		if (bbp_is_forum_category($forum_id)) {
-			return new WP_Error('error', 'Forum with ID ' . $request['id'] . ' is a category, so no topics allowed', array('status' => 404));
-		}
-
-		return true;
-	}
-
-	function bbp_topic_like_permissions_check($request) {
-		$current_user = wp_get_current_user();
-		$ID = $current_user->ID;
-		if ($ID == 0) {
-			return new WP_Error('error', '尚未登录或Token无效', array('status' => 400));
-		}
-		return true;
-	}
-
-	function bbp_api_new_reply_permissions_check($request) {
-		$current_user = wp_get_current_user();
-		$ID = $current_user->ID;
-		if ($ID == 0) {
-			return new WP_Error('error', '尚未登录或Token无效', array('status' => 400));
-		}
-
-		$content = $request['content'];
-		if (empty($content)) {
-			return new WP_Error('error', '内容为空', array('status' => 400));
-		}
-
-		if (strlen($content) > 5000) {
-			return new WP_Error('error', '内容文字太多，超过5000字', array('status' => 400));
-		}
-
-		//required fields in POST data
-		$topic_id = bbp_get_topic_id($request['topic_id']);
-		if ($topic_id == 0) {
-			return new WP_Error('error', 'Parameter value of ID for a topic should not be 0', array('status' => 403));
-		}
-		if (!bbp_is_topic($topic_id)) {
-			return new WP_Error('error', 'Parameter value ' . $topic_id . ' is not an ID of a topic', array('status' => 403));
-		}
-
-		$reply_to_id = bbp_get_reply_id($request["reply_to_id"]);
-		if ($reply_to_id == 0) {
-			return true;
-		}
-		if (!bbp_is_reply($reply_to_id)) {
-			return new WP_Error('error', 'Parameter value ' . $reply_to_id . ' is not an ID of a reply', array('status' => 403));
-		}
-
 		return true;
 	}
 }
