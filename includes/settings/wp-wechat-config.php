@@ -37,14 +37,14 @@ function register_weixinappsettings() {
 	register_setting('uniapp-group', 'wf_paykey');
 	register_setting('uniapp-group', 'wf_paybody');
 
-	register_setting('uniapp-group', 'wf_poster_imageurl');
+	// 评论是否开启
 	register_setting('uniapp-group', 'wf_enable_comment_option');
-	register_setting('uniapp-group', 'wf_enable_comment_check');
 	register_setting('uniapp-group', 'wf_enable_qq_comment_option');
 	register_setting('uniapp-group', 'uni_enable_h5_comment_option');
 
+	register_setting('uniapp-group', 'uni_show_comment_location');
 
-	register_setting('uniapp-group', 'wf_praise_word');
+    register_setting('uniapp-group', 'wf_praise_word');
 	register_setting('uniapp-group', 'wf_weixin_enterprise_minapp');
 	register_setting('uniapp-group', 'wf_qq_enterprise_minapp');
 
@@ -64,6 +64,7 @@ function register_weixinappsettings() {
 	register_setting('uniapp-group', 'wf_business_domain');
 	register_setting('uniapp-group', 'wf_zan_imageurl');
 	register_setting('uniapp-group', 'wf_share_imageurl');
+	register_setting('uniapp-group', 'wf_poster_imageurl');
 
 	register_setting('uniapp-group', 'enable_index_interstitial_ad');
 	register_setting('uniapp-group', 'enable_detail_interstitial_ad');
@@ -79,8 +80,9 @@ function register_weixinappsettings() {
 	register_setting('uniapp-group', 'uni_app_updated_content');
 	register_setting('uniapp-group', 'uni_app_updated_download_link');
 
-	// 论坛设置
-	register_setting('uniapp-group', 'uni_enable_forum_censorship');
+	// 评论和发帖审核
+	register_setting('uniapp-group', 'uni_enable_manual_censorship'); // 是否开启人工审核
+	register_setting('uniapp-group', 'uni_enable_ai_censorship');   // 是否开启AI审核
 }
 
 function weixinapp_settings_page() {
@@ -109,14 +111,35 @@ function weixinapp_settings_page() {
                     <table class="form-table">
 
                         <tr valign="top">
-                            <th scope="row">“订阅者”用户开启评论审核</th>
+                            <th scope="row">是否开启人工评论和发帖审核</th>
                             <td>
 								<?php
-								$wf_enable_comment_check = get_option('wf_enable_comment_check');
-								$checkbox1 = empty($wf_enable_comment_check) ? '' : 'checked';
-								echo '<input name="wf_enable_comment_check"  type="checkbox"  value="1" ' . $checkbox1 . ' />';
-
+								$uni_enable_manual_censorship = get_option('uni_enable_manual_censorship');
+								$is_uni_enable_manual_censorship = empty($uni_enable_manual_censorship) ? '' : 'checked';
+								echo '<input name="uni_enable_manual_censorship"  type="checkbox" ' . $is_uni_enable_manual_censorship . ' />';
 								?>
+                            </td>
+                        </tr>
+
+                        <tr valign="top">
+                            <th scope="row">是否开启AI评论和发帖审核</th>
+                            <td>
+								<?php
+								$uni_enable_ai_censorship = get_option('uni_enable_ai_censorship');
+								$is_uni_enable_ai_censorship = empty($uni_enable_ai_censorship) ? '' : 'checked';
+								echo '<input name="uni_enable_ai_censorship"  type="checkbox" ' . $is_uni_enable_ai_censorship . ' />';
+								?>
+                            </td>
+                        </tr>
+
+                        <tr valign="top">
+                            <th scope="row">是否开启显示评论IP位置</th>
+                            <td>
+			                    <?php
+			                    $uni_show_comment_location = get_option('uni_show_comment_location');
+			                    $is_uni_show_comment_location = empty($uni_show_comment_location) ? '' : 'checked';
+			                    echo '<input name="uni_show_comment_location"  type="checkbox" ' . $is_uni_show_comment_location . ' />';
+			                    ?>
                             </td>
                         </tr>
 
@@ -369,13 +392,6 @@ function weixinapp_settings_page() {
 								$checkbox = empty($enable_comments_interstitial_ad) ? '' : 'checked';
 								echo '最新评论页<input name="enable_comments_interstitial_ad"  type="checkbox"  value="1" ' . $checkbox . ' />';
 								?>
-                                &emsp;
-								<?php
-								$enable_live_interstitial_ad = get_option('enable_live_interstitial_ad');
-								$checkbox = empty($enable_live_interstitial_ad) ? '' : 'checked';
-								echo '直播页<input name="enable_live_interstitial_ad"  type="checkbox"  value="1" ' . $checkbox . ' />';
-								?>
-
 
                             </td>
                         </tr>
@@ -485,16 +501,6 @@ function weixinapp_settings_page() {
                 <h2>论坛设置</h2>
                 <div class="section">
                     <table class="form-table">
-                        <tr valign="top">
-                            <th scope="row">开启论坛评论和发帖审核</th>
-                            <td>
-								<?php
-								$uni_enable_forum_censorship = get_option('uni_enable_forum_censorship');
-								$checkbox = empty($uni_enable_forum_censorship) ? '' : 'checked';
-								echo '<input name="uni_enable_forum_censorship" type="checkbox"  value="true" ' . $checkbox . ' />';
-								?>
-                            </td>
-                        </tr>
                     </table>
                 </div>
             </div>

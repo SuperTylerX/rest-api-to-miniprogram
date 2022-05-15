@@ -15,9 +15,14 @@ define('REST_API_TO_MINIPROGRAM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 const REST_API_TO_MINIPROGRAM_PLUGIN_NAME = 'rest-api-to-miniprogram-enhanced';
 define('REST_API_TO_MINIPROGRAM_PLUGIN_URL', plugins_url(REST_API_TO_MINIPROGRAM_PLUGIN_NAME . '/', dirname(__FILE__)));
 
+//引入ipip库
+require_once(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/vendor/ipip/Reader.php');
+require_once(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/vendor/ipip/City.php');
+
 include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/ram-util.php');
 include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/ram-api.php');
-include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/ram-weixin-api.php');
+include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/server/uni-wechat-api.php');
+include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/server/uni-qq-api.php');
 include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/settings/wp-wechat-config.php');
 include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/settings/wp-post-config.php');
 include(REST_API_TO_MINIPROGRAM_PLUGIN_DIR . 'includes/settings/wp-tinymce-add-button.php');
@@ -35,7 +40,8 @@ if (!class_exists('RestAPIMiniProgram')) {
 
 	class RestAPIMiniProgram {
 
-		public $wxapi = null;
+		public $WechatAPI;
+		public $QQAPI;
 
 		public function __construct() {
 			//定制化内容输出，对pc端和api都生效
@@ -76,8 +82,6 @@ if (!class_exists('RestAPIMiniProgram')) {
 
 			// 管理配置
 			if (is_admin()) {
-
-				//new WP_Category_Config();
 				add_action('admin_enqueue_scripts', 'ram_admin_style', 9999);
 				add_action('admin_menu', 'weixinapp_create_menu');
 				add_action('init', 'minapper_admin_menu');
@@ -85,16 +89,20 @@ if (!class_exists('RestAPIMiniProgram')) {
 				wp_post_config();
 			}
 
-			new RAM_API(); //api
-			$this->wxapi = new RAM_Weixin_API();
+			//初始化自定义API
+			new RAM_API();
+
+			// 将小程序服务端API加入到全局中
+			$this->WechatAPI = new UniWechatAPI();
+			$this->QQAPI = new UniQQAPI();
 		}
 	}
-
 
 	// 实例化并加入全局变量
 	$GLOBALS['RestAPIMiniProgram'] = new RestAPIMiniProgram();
 
-	function RAM() {
+	// 单例模式，返回全局变量
+	function UniRestAPIInstance() {
 
 		if (!isset($GLOBALS['RestAPIMiniProgram'])) {
 			$GLOBALS['RestAPIMiniProgram'] = new RestAPIMiniProgram();

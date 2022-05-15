@@ -13,15 +13,37 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 	public function register_routes() {
 		// 注册获取某篇文章的评论的路由
 		register_rest_route($this->namespace, '/' . $this->resource_name . '/getcomments', array(
-			// Here we register the readable endpoint for collections.
 			array(
 				'methods' => 'GET',
 				'callback' => array($this, 'get_comments'),
-				'permission_callback' => array($this, 'get_item_permissions_check'),
 				'args' => array(
 					'postid' => array(
-						'required' => true
-					)
+						'required' => true,
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param);
+						}
+					),
+					'page' => array(
+						'required' => false,
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param);
+						},
+						'default' => 1
+					),
+					'limit' => array(
+						'required' => false,
+						'validate_callback' => function ($param, $request, $key) {
+							return is_numeric($param);
+						},
+						'default' => 10
+					),
+					'order' => array(
+						'required' => false,
+						'default' => 'asc',
+						'validate_callback' => function ($param, $request, $key) {
+							return in_array($param, array('asc', 'desc'));
+						}
+					),
 				)
 
 			),
@@ -31,23 +53,20 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 
 		// 注册获取某个用户的评论的路由
 		register_rest_route($this->namespace, '/' . $this->resource_name . '/get', array(
-			// Here we register the readable endpoint for collections.
 			array(
 				'methods' => 'GET',
-				'callback' => array($this, 'getcomment'),
-				'permission_callback' => array($this, 'comment_permissions_check')
+				'callback' => array($this, 'get_comment_by_user'),
+				'permission_callback' => array($this, 'jwt_permissions_check')
 			),
-			// Register our schema callback.
 			'schema' => array($this, 'get_public_item_schema'),
 		));
 
 		// 注册删除某个用户的评论的路由
 		register_rest_route($this->namespace, '/' . $this->resource_name . '/delete', array(
-			// Here we register the readable endpoint for collections.
 			array(
 				'methods' => 'DELETE',
 				'callback' => array($this, 'delete_comment'),
-				'permission_callback' => array($this, 'comment_permissions_check'),
+				'permission_callback' => array($this, 'jwt_permissions_check'),
 				'args' => array(
 					'commentId' => array(
 						'required' => true
@@ -55,17 +74,15 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 				)
 
 			),
-			// Register our schema callback.
 			'schema' => array($this, 'get_public_item_schema'),
 		));
 
 		// 注册添加评论的路由
 		register_rest_route($this->namespace, '/' . $this->resource_name . '/add', array(
-			// Here we register the readable endpoint for collections.
 			array(
 				'methods' => 'POST',
 				'callback' => array($this, 'add_comment'),
-				'permission_callback' => array($this, 'comment_permissions_check'),
+				'permission_callback' => array($this, 'jwt_permissions_check'),
 				'args' => array(
 					'post' => array(
 						'required' => true
@@ -75,18 +92,23 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 					),
 					'content' => array(
 						'required' => true
+					),
+					'platform' => array(
+						'required' => true,
+						'validate_callback' => function ($param, $request, $key) {
+							return in_array($param, array('APP', 'H5', 'MP-WEIXIN', 'MP-ALIPAY', 'MP-BAIDU', 'MP-TOUTIAO', 'MP-QQ'));
+						}
 					)
 				)
 
 			),
-			// Register our schema callback.
 			'schema' => array($this, 'get_public_item_schema'),
 		));
 	}
 
 
 	//获取某个用户的评论
-	function getcomment($request) {
+	public function get_comment_by_user($request) {
 		global $wpdb;
 
 		$current_user = wp_get_current_user();
@@ -113,29 +135,26 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 	}
 
 	// 获取某篇文章的评论
-	function get_comments($request) {
+	public function get_comments($request) {
 		$cachedata = '';
 		if (function_exists('MRAC')) {
 			$cachedata = MRAC()->cacheManager->get_cache();
 			if (!empty($cachedata)) {
-
 				$response = rest_ensure_response($cachedata);
 				return $response;
 			}
 		}
 		global $wpdb;
-		$postid = isset($request['postid']) ? (int)$request['postid'] : 0;
-		$limit = isset($request['limit']) ? (int)$request['limit'] : 0;
-		$page = isset($request['page']) ? (int)$request['page'] : 0;
-		$order = isset($request['order']) ? $request['order'] : '';
-		if (empty($order)) {
-			$order = "asc";
-		}
+		$postid = (int)$request['postid'];
+		$limit = (int)$request['limit'];
+		$page = (int)$request['page'];
+		$order = $request['order'];
+
 		$page = ($page - 1) * $limit;
 		$sql = $wpdb->prepare("SELECT t.* FROM " . $wpdb->comments . " t WHERE t.comment_post_ID =%d and t.comment_parent=0 and t.comment_approved='1' order by t.comment_date " . $order . " limit %d,%d", $postid, $page, $limit);
 
 		$comments = $wpdb->get_results($sql);
-		$commentslist = array();
+		$comments_list = array();
 		foreach ($comments as $comment) {
 			if ($comment->comment_parent == 0) {
 				$data["id"] = $comment->comment_ID;
@@ -149,28 +168,28 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 				$data["date"] = time_tran($comment->comment_date);
 				$data["content"] = $comment->comment_content;
 				$data["userid"] = $comment->user_id;
-				$order = "asc";
-				$data["child"] = $this->getchildcomment($postid, $comment->comment_ID, 5, $order);
-				$commentslist[] = $data;
+				if (get_option("uni_show_comment_location")) {
+					$data["location"] = empty($comment->comment_author_IP) ? null : get_ip_location($comment->comment_author_IP);
+				}
+				$data["child"] = $this->get_child_comment($postid, $comment->comment_ID, 5, "asc");
+				$comments_list[] = $data;
 			}
 		}
 		$result["code"] = "success";
 		$result["message"] = "获取评论成功";
 		$result["status"] = "200";
-		$result["data"] = $commentslist;
+		$result["data"] = $comments_list;
 
 		if ($cachedata == '' && function_exists('MRAC')) {
-
 			$cachedata = MRAC()->cacheManager->set_cache($result, 'postcomments', $postid);
 		}
-		$response = rest_ensure_response($result);
-		return $response;
+		return rest_ensure_response($result);
 	}
 
-	function getchildcomment($postid, $comment_id, $limit, $order) {
+	private function get_child_comment($postid, $comment_id, $limit, $order) {
 		global $wpdb;
 		if ($limit > 0) {
-			$commentslist = array();
+			$comments_list = array();
 			$sql = $wpdb->prepare("SELECT t.* FROM " . $wpdb->comments . " t WHERE t.comment_post_ID =%d and t.comment_parent=%d and t.comment_approved='1' order by comment_date " . $order, $postid, $comment_id);
 
 			$comments = $wpdb->get_results($sql);
@@ -186,15 +205,15 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 				$data["date"] = time_tran($comment->comment_date);
 				$data["content"] = $comment->comment_content;
 				$data["userid"] = $comment->user_id;
-				$data["child"] = $this->getchildcomment($postid, $comment->comment_ID, $limit - 1, $order);
-				$commentslist[] = $data;
+				$data["child"] = $this->get_child_comment($postid, $comment->comment_ID, $limit - 1, $order);
+				$comments_list[] = $data;
 			}
 		}
-		return $commentslist;
+		return $comments_list;
 	}
 
 	// 删除用户的评论
-	function delete_comment($request) {
+	public function delete_comment($request) {
 		$commentId = $request["commentId"];
 		$comment = get_comment($commentId);
 		$current_user = wp_get_current_user();
@@ -219,11 +238,20 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 		return rest_ensure_response($result);
 	}
 
-	function add_comment($request) {
+	// 新增评论
+	public function add_comment($request) {
 
 		$post = $request['post'];
 		$parent = $request['parent'];
 		$content = $request['content'];
+		$platform = $request['platform'];
+
+		// 过滤xss内容
+		$content = wp_filter_nohtml_kses($content);
+		// filter hyperlinks
+//		$content = preg_replace('/<a\s+.*?href="([^"]+)"[^>]*>(.*?)<\/a>/i', '$2', $content);
+//		// filter images
+//		$content = preg_replace('/<img\s+.*?src="([^"]+)"[^>]*>/i', '', $content);
 
 		$current_user = wp_get_current_user();
 		$user_id = $current_user->ID;
@@ -231,26 +259,40 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 		$author_email = $current_user->user_email;
 		$author_url = $current_user->user_url;
 
-		$authorIp = ram_get_client_ip();
+		$authorIp = get_client_ip();
 		$authorIp = empty($authorIp) ? '' : $authorIp;
-		$wf_enable_comment_check = get_option('wf_enable_comment_check');
+		$uni_enable_manual_censorship = get_option('uni_enable_manual_censorship');
+		$uni_enable_ai_censorship = get_option('uni_enable_ai_censorship');
 
-
-		$data = array(
-			'content' => $content
-		);
-
-		$msgSecCheckResult = RAM()->wxapi->msgSecCheck($data);
-		$errcode = $msgSecCheckResult['errcode'];
-		$errmsg = $msgSecCheckResult['errmsg'];
-		if ($errcode == 87014) {
-			return new WP_Error($errcode, $errmsg, array('status' => 403));
+		// 判断用户是否开启了小程序端评论检测
+		if (!empty($uni_enable_ai_censorship)) {
+			if ($platform === 'MP-WEIXIN') {
+				$data = array(
+					'content' => $content
+				);
+				$msgSecCheckResult = UniRestAPIInstance()->WechatAPI->msgSecCheck($data);
+				$errcode = $msgSecCheckResult['errcode'];
+				$errmsg = $msgSecCheckResult['errmsg'];
+				if ($errcode == 87014) {
+					return new WP_Error($errcode, "内容违规", array('status' => 403));
+				}
+			} else if ($platform === 'MP-QQ') {
+				$data = array(
+					'content' => $content
+				);
+				$msgSecCheckResult = UniRestAPIInstance()->QQAPI->msgSecCheck($data);
+				$errcode = $msgSecCheckResult['errCode'];
+				$errmsg = $msgSecCheckResult['errMsg'];
+				if ($errcode == 87014) {
+					return new WP_Error($errcode, "内容违规", array('status' => 403));
+				}
+			}
 		}
 
+		// 判断是否需要人工审核
 		$comment_approved = "1";
 		$userLevel = getUserLevel($user_id);
-
-		if (!empty($wf_enable_comment_check) && $userLevel["level"] == '0') {
+		if (!empty($uni_enable_manual_censorship) && $userLevel["level"] == '0') {
 			$comment_approved = "0";
 		}
 
@@ -264,8 +306,8 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 			'comment_parent' => $parent, //0 if it's not a reply to another comment; if it's a reply, mention the parent comment ID here
 			'user_id' => $user_id, //passing current user ID or any predefined as per the demand
 			'comment_author_IP' => $authorIp,
-			'comment_approved' => $comment_approved
-			// 'comment_agent' => $_SERVER['HTTP_USER_AGENT'] // 加入UA后小程序端无法正常留言
+			'comment_approved' => $comment_approved,
+//			'comment_agent' => $_SERVER['HTTP_USER_AGENT'] // 加入UA后小程序端无法正常留言
 		);
 
 		$comment_id = wp_insert_comment(wp_filter_comment($commentdata));
@@ -277,15 +319,13 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 			$result["code"] = "success";
 			$message = '留言成功';
 
-			if (!empty($wf_enable_comment_check) && $userLevel["level"] == '0') {
+			if (!empty($uni_enable_manual_censorship) && $userLevel["level"] == '0') {
 				$message = '留言已提交,需管理员审核方可显示。';
 			}
 
 			if (function_exists('MRAC')) {
-
 				$cachedata = MRAC()->cacheManager->delete_cache('postcomments', $post);
 			}
-
 
 			$result["status"] = "200";
 			$result["level"] = $userLevel;
@@ -296,31 +336,12 @@ class RAM_REST_Comments_Controller extends WP_REST_Controller {
 		}
 	}
 
-	public function get_item_permissions_check($request) {
-		$postid = isset($request['postid']) ? (int)$request['postid'] : 0;
-		$limit = isset($request['limit']) ? (int)$request['limit'] : 0;
-		$page = isset($request['page']) ? (int)$request['page'] : 0;
-		$order = isset($request['order']) ? $request['order'] : '';
-		if (empty($order)) {
-			$order = "asc";
-		}
-
-		if (empty($postid) || empty($limit) || empty($page) || get_post($postid) == null) {
-			return new WP_Error('error', ' 参数不能为空：postid,limit,page', array('status' => 500));
-		} elseif (!is_numeric($limit) || !is_numeric($page) || !is_numeric($postid)) {
-			return new WP_Error('error', ' 参数错误', array('status' => 500));
-		}
-		return true;
-	}
-
-	function comment_permissions_check($request) {
-
+	function jwt_permissions_check($request) {
 		$current_user = wp_get_current_user();
 		$ID = $current_user->ID;
 		if ($ID == 0) {
 			return new WP_Error('error', '尚未登录或Token无效', array('status' => 400));
 		}
-
 		return true;
 	}
 }

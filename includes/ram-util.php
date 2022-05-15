@@ -181,125 +181,6 @@ function get_avatar_2($userid) {
 	return '<img  src="' . get_avatar_url_2($userid) . '"  width="20px" height="20px"/>';
 }
 
-
-//等比例缩小图片，处理二维码
-function PicCompress($src, $out_with = 100) {
-	// 获取图片基本信息
-	list($width, $height, $type, $attr) = getimagesize($src);
-	// 获取图片后缀名
-	$pictype = image_type_to_extension($type, false);
-	// 拼接方法
-	$imagecreatefrom = "imagecreatefrom" . $pictype;
-	// 打开传入的图片
-	$in_pic = $imagecreatefrom($src);
-	// 压缩后的图片长宽
-	$new_width = $out_with;
-	$new_height = $out_with / $width * $height;
-	// 生成中间图片
-	$temp = imagecreatetruecolor($new_width, $new_height);
-	// 图片按比例合并在一起。
-	imagecopyresampled($temp, $in_pic, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-	// 销毁输入图片
-	imagedestroy($in_pic);
-
-	return $temp;
-
-}
-
-//添加文字到图片上，需要设置字体
-function FontToPic($text, $font, $font_size = 10, $pic_hight = 50, $pic_width = 300) {
-	// header("Content-type: image/jpeg");
-	mb_internal_encoding("UTF-8");
-	$im = imagecreate($pic_width, $pic_hight);
-	$background_color = ImageColorAllocate($im, 255, 255, 255);
-	$col = imagecolorallocate($im, 0, 0, 0);
-	$come = $text;
-	/*水平居中（换行），固定字号*/
-	$txt_max_width = intval(0.9 * $pic_width);
-	$content = "";
-	for ($i = 0; $i < mb_strlen($come); $i++) {
-		$letter[] = mb_substr($come, $i, 1);
-	}
-	// var_dump($letter);die;
-	foreach ($letter as $l) {
-		$teststr = $content . " " . $l;
-		$testbox = imagettfbbox($font_size, 0, $font, $teststr);
-		// var_dump($testbox);die;
-		// 判断拼接后的字符串是否超过预设的宽度
-		if (($testbox[2] > $txt_max_width) && ($content !== "")) {
-			$content .= "\n";
-		}
-		$content .= $l;
-	}
-	$test = explode("\n", $content);
-	// var_dump($test);die;
-	// $fbox = imagettfbbox(10,0,$font,$come);
-	// echo  1;die;
-	$txt_width = $testbox[2] - $testbox[0];
-
-	$txt_height = $testbox[0] - $testbox[7];
-
-	$y = ($pic_hight * 0.8) - ((count($test) - 1) * $txt_height); // baseline of text at 90% of $img_height
-	// var_dump($txt_height);die;
-	// imagettftext($im,$font_size,0,$x,$y,$col,$font,$content); //写 TTF 文字到图中
-	foreach ($test as $key => $value) {
-		$textbox = imagettfbbox($font_size, 0, $font, $value);
-		$txt_height = $textbox[0] - $textbox[7];
-		$text_width = $textbox[2] - $textbox[0];
-		$x = ($pic_width - $text_width) / 2;
-		imagettftext($im, $font_size, 0, $x, $y, $col, $font, $value);
-		$y = $y + $txt_height + 2; // 加2为调整行距
-	}
-
-	return $im;
-
-}
-
-/** 画圆角
- * @param $radius 圆角位置
- * @param $color_r 色值0-255
- * @param $color_g 色值0-255
- * @param $color_b 色值0-255
- * @return resource 返回圆角
- */
-function get_lt_rounder_corner($radius, $color_r, $color_g, $color_b) {
-	// 创建一个正方形的图像
-	$img = imagecreatetruecolor($radius, $radius);
-	// 图像的背景
-	$bgcolor = imagecolorallocate($img, $color_r, $color_g, $color_b);
-	$fgcolor = imagecolorallocate($img, 0, 0, 0);
-	imagefill($img, 0, 0, $bgcolor);
-	// $radius,$radius：以图像的右下角开始画弧
-	// $radius*2, $radius*2：已宽度、高度画弧
-	// 180, 270：指定了角度的起始和结束点
-	// fgcolor：指定颜色
-	imagefilledarc($img, $radius, $radius, $radius * 2, $radius * 2, 180, 270, $fgcolor, IMG_ARC_PIE);
-	// 将弧角图片的颜色设置为透明
-	imagecolortransparent($img, $fgcolor);
-	return $img;
-}
-
-/**
- * @param $im  大的背景图，也是我们的画板
- * @param $lt_corner 我们画的圆角
- * @param $radius  圆角的程度
- * @param $image_h 图片的高
- * @param $image_w 图片的宽
- */
-function myradus($im, $lift, $top, $lt_corner, $radius, $image_h, $image_w) {
-/// lt(左上角)
-	imagecopymerge($im, $lt_corner, $lift, $top, 0, 0, $radius, $radius, 100);
-// lb(左下角)
-	$lb_corner = imagerotate($lt_corner, 90, 0);
-	imagecopymerge($im, $lb_corner, $lift, $image_h - $radius + $top, 0, 0, $radius, $radius, 100);
-// rb(右上角)
-	$rb_corner = imagerotate($lt_corner, 180, 0);
-	imagecopymerge($im, $rb_corner, $image_w + $lift - $radius, $image_h + $top - $radius, 0, 0, $radius, $radius, 100);
-// rt(右下角)
-	$rt_corner = imagerotate($lt_corner, 270, 0);
-	imagecopymerge($im, $rt_corner, $image_w - $radius + $lift, $top, 0, 0, $radius, $radius, 100);
-}
-
 function get_content_post($url, $post_data = array(), $header = array()) {
 	$ch = curl_init();
 	curl_setopt($ch, CURLOPT_URL, $url);
@@ -340,30 +221,6 @@ function https_request($url) {
 	return $data;
 }
 
-function https_curl_post($url, $data, $type) {
-	if ($type == 'json') {
-		//$headers = array("Content-type: application/json;charset=UTF-8","Accept: application/json","Cache-Control: no-cache", "Pragma: no-cache");
-		$data = json_encode($data);
-	}
-	$curl = curl_init();
-	curl_setopt($curl, CURLOPT_URL, $url);
-	curl_setopt($curl, CURLOPT_POST, 1); // 发送一个常规的Post请求
-	curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
-	curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, FALSE);
-	if (!empty($data)) {
-		curl_setopt($curl, CURLOPT_POST, 1);
-		curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
-	}
-	curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
-	//curl_setopt($curl, CURLOPT_HTTPHEADER, $headers );
-	$data = curl_exec($curl);
-	if (curl_errno($curl)) {
-		return 'ERROR';
-	}
-	curl_close($curl);
-	return $data;
-}
-
 function time_tran($the_time) {
 	date_default_timezone_set('Asia/Shanghai');
 	$now_time = date("Y-m-d H:i:s", time());
@@ -393,53 +250,7 @@ function time_tran($the_time) {
 	}
 }
 
-/**
- * 检验数据的真实性，并且获取解密后的明文.
- * @param $sessionKey string 用户在小程序登录后获取的会话密钥
- * @param $appid string 小程序的appid
- * @param $encryptedData string 加密的用户数据
- * @param $iv string 与用户数据一同返回的初始向量
- * @param $data string 解密后的原文
- *
- * @return int 成功0，失败返回对应的错误码
- */
-function decrypt_data($appid, $sessionKey, $encryptedData, $iv, &$data) {
-
-	$errors = array(
-		'OK' => 0,
-		'IllegalAesKey' => -41001,
-		'IllegalIv' => -41002,
-		'IllegalBuffer' => -41003,
-		'DecodeBase64Error' => -41004
-	);
-
-	if (strlen($sessionKey) != 24) {
-		return $errors['IllegalAesKey'];
-	}
-	$aesKey = base64_decode($sessionKey);
-
-
-	if (strlen($iv) != 24) {
-		return $errors['IllegalIv'];
-	}
-	$aesIV = base64_decode($iv);
-
-	$aesCipher = base64_decode($encryptedData);
-
-	$result = openssl_decrypt($aesCipher, 'AES-128-CBC', $aesKey, 1, $aesIV);
-
-	$dataObj = json_decode($result);
-	if ($dataObj == NULL) {
-		return $errors['IllegalBuffer'];
-	}
-	if ($dataObj->watermark->appid != $appid) {
-		return $errors['IllegalBuffer'];
-	}
-	$data = $result;
-	return $errors['OK'];
-}
-
-function ram_get_client_ip() {
+function get_client_ip() {
 	foreach (array(
 		         'HTTP_CLIENT_IP',
 		         'HTTP_X_FORWARDED_FOR',
@@ -501,7 +312,7 @@ function getUserLevel($userId) {
 			break;
 
 		case "1":
-			$levelName = "贡献者";
+			$levelName = "投稿者";
 			break;
 
 		case "0":
@@ -774,15 +585,29 @@ function custom_minapper_post_fields($_data, $post, $request) {
 	return $_data;
 }
 
-
+/**
+ * 生成一个随机字符串
+ * @param $length int 随机字符串的长度
+ * @return string 随机字符串
+ */
 function get_random_string($length) {
-    //字符组合
-    $str = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    $len = strlen($str) - 1;
-    $randstr = '';
-    for ($i = 0; $i < $length; $i++) {
-        $num = mt_rand(0, $len);
-        $randstr .= $str[$num];
-    }
-    return $randstr;
+	//字符组合
+	$str = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+	$len = strlen($str) - 1;
+	$randstr = '';
+	for ($i = 0; $i < $length; $i++) {
+		$num = mt_rand(0, $len);
+		$randstr .= $str[$num];
+	}
+	return $randstr;
+}
+
+/**
+ * 获取IP对应的地理位置
+ * @param $ip string IP地址
+ * @return array 地理位置信息
+ */
+function get_ip_location($ip) {
+	$ipip_city = new ipip\db\City(__DIR__ . '/vendor/ipip/db/ipipfree.ipdb');
+	return $ipip_city->findMap($ip, 'CN');
 }

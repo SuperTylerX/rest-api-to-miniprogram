@@ -143,6 +143,12 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 						},
 						'default' => 0
 					),
+					'platform' => array(
+						'required' => true,
+						'validate_callback' => function ($param, $request, $key) {
+							return in_array($param, array('APP', 'H5', 'MP-WEIXIN', 'MP-ALIPAY', 'MP-BAIDU', 'MP-TOUTIAO', 'MP-QQ'));
+						}
+					)
 				)
 			),
 			// Register our schema callback.
@@ -200,6 +206,12 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 							return true;
 						}
 					),
+					'platform' => array(
+						'required' => true,
+						'validate_callback' => function ($param, $request, $key) {
+							return in_array($param, array('APP', 'H5', 'MP-WEIXIN', 'MP-ALIPAY', 'MP-BAIDU', 'MP-TOUTIAO', 'MP-QQ'));
+						}
+					)
 				)
 			),
 			// Register our schema callback.
@@ -423,6 +435,12 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			}
 			$res["post_date"] = time_tran($comment->post_date);
 			$res["content"] = $comment->post_content;
+
+			if (get_option("uni_show_comment_location")) {
+				$ip = get_post_meta($reply_id, '_bbp_author_ip', true);
+				$res["location"] = empty($ip) ? null : get_ip_location($ip);
+			}
+
 			$res["child"] = $this->get_child_comment($topic_id, $reply_id);
 			$comments_list[] = $res;
 
@@ -462,6 +480,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 	// 发表一个新文章
 	public function bbp_api_new_topic_post($request) {
 		$forum_id = bbp_get_forum_id($request['forum_id']);
+		$platform = $request['platform'];
 		$content = $request['content'];
 		// 过滤xss内容
 		$content = wp_filter_post_kses($content);
@@ -477,10 +496,37 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		$userId = $current_user->ID;
 		$tags = isset($request['tags']) ? $request['tags'] : [];
 
+		$uni_enable_manual_censorship = get_option('uni_enable_manual_censorship');
+		$uni_enable_ai_censorship = get_option('uni_enable_ai_censorship');
+
 		$post_status = 'publish';
-		$uni_enable_forum_censorship = !empty(get_option('uni_enable_forum_censorship'));
-		if (!empty($uni_enable_forum_censorship)) {
+		if (!empty($uni_enable_manual_censorship)) {
 			$post_status = 'pending';
+		}
+
+		// 判断用户是否开启了小程序端评论检测
+		if (!empty($uni_enable_ai_censorship)) {
+			if ($platform === 'MP-WEIXIN') {
+				$data = array(
+					'content' => $content
+				);
+				$msgSecCheckResult = UniRestAPIInstance()->WechatAPI->msgSecCheck($data);
+				$errcode = $msgSecCheckResult['errcode'];
+				$errmsg = $msgSecCheckResult['errmsg'];
+				if ($errcode == 87014) {
+					return new WP_Error($errcode, "内容违规", array('status' => 403));
+				}
+			} else if ($platform === 'MP-QQ') {
+				$data = array(
+					'content' => $content
+				);
+				$msgSecCheckResult = UniRestAPIInstance()->QQAPI->msgSecCheck($data);
+				$errcode = $msgSecCheckResult['errCode'];
+				$errmsg = $msgSecCheckResult['errMsg'];
+				if ($errcode == 87014) {
+					return new WP_Error($errcode, "内容违规", array('status' => 403));
+				}
+			}
 		}
 
 		$new_topic_id = bbp_insert_topic(
@@ -513,8 +559,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$code = "1";
 
 			//需要审核显示
-			$uni_enable_forum_censorship = get_option('uni_enable_forum_censorship');
-			if (!empty($uni_enable_forum_censorship)) {
+			if (!empty($uni_enable_manual_censorship)) {
 				$message = "提交成功,管理员审核通过后方可显示";
 				$code = "2";
 			}
@@ -537,6 +582,8 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 	public function bbp_api_new_reply($request) {
 
 		$content = $request['content'];
+		$platform = $request['platform'];
+
 		// 过滤xss内容
 		$content = wp_filter_post_kses($content);
 		$topic_id = $request["topic_id"];
@@ -546,10 +593,37 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 		$current_user = wp_get_current_user();
 		$userId = $current_user->ID;
 
+		$uni_enable_manual_censorship = get_option('uni_enable_manual_censorship');
+		$uni_enable_ai_censorship = get_option('uni_enable_ai_censorship');
+
 		$post_status = 'publish';
-		$uni_enable_forum_censorship = get_option('uni_enable_forum_censorship');
-		if (!empty($uni_enable_forum_censorship)) {
+		if (!empty($uni_enable_manual_censorship)) {
 			$post_status = 'pending';
+		}
+
+		// 判断用户是否开启了小程序端评论检测
+		if (!empty($uni_enable_ai_censorship)) {
+			if ($platform === 'MP-WEIXIN') {
+				$data = array(
+					'content' => $content
+				);
+				$msgSecCheckResult = UniRestAPIInstance()->WechatAPI->msgSecCheck($data);
+				$errcode = $msgSecCheckResult['errcode'];
+				$errmsg = $msgSecCheckResult['errmsg'];
+				if ($errcode == 87014) {
+					return new WP_Error($errcode, "内容违规", array('status' => 403));
+				}
+			} else if ($platform === 'MP-QQ') {
+				$data = array(
+					'content' => $content
+				);
+				$msgSecCheckResult = UniRestAPIInstance()->QQAPI->msgSecCheck($data);
+				$errcode = $msgSecCheckResult['errCode'];
+				$errmsg = $msgSecCheckResult['errMsg'];
+				if ($errcode == 87014) {
+					return new WP_Error($errcode, "内容违规", array('status' => 403));
+				}
+			}
 		}
 
 		$new_reply_id = bbp_insert_reply(array(
@@ -567,7 +641,7 @@ class RAM_REST_Forums_Controller extends WP_REST_Controller {
 			$message = "发表成功";
 			$code = "1";
 
-			if (!empty($uni_enable_forum_censorship)) {
+			if (!empty($uni_enable_manual_censorship)) {
 				$message = "提交成功,管理员审核通过后方可显示";
 				$code = "2";    //需要审核显示
 			}
